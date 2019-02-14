@@ -14,7 +14,6 @@ class Game:
     GRID_START_X = (SCREEN_WIDTH - GAME_WIDTH) // 2
     GRID_START_Y = SCREEN_HEIGHT - GAME_HEIGHT
 
-
     S = [['.....',
           '..00.',
           '.00..',
@@ -121,6 +120,12 @@ class Game:
     shape_colors = [(0, 255, 0), (255, 0, 0), (0, 255, 255), (255, 255, 0), (0, 0, 255), (255, 165, 0), (128, 0, 128)]
     NUM_SHAPE = len(shapes)
     EMPTY = (0, 0, 0)
+    NUM_INPUT = 14
+    NUM_ACTIONS = 5
+    UP, DOWN, LEFT, RIGHT, SPACE = 14, 15, 16, 17, 18
+
+    def __init__(self):
+        self.win = None
 
     def create_grid(self):
         return [[Game.EMPTY for _ in range(Game.NUM_COLS)] for _ in range(Game.NUM_ROWS)]
@@ -251,7 +256,7 @@ class Game:
 
         self.draw_grid(surface, grid)
 
-    def game_start(self, win):
+    def game_start(self, organism, show):
         locked_grid = self.create_grid()
         gen_shape = []
 
@@ -261,12 +266,15 @@ class Game:
         current_piece = self.get_shape(gen_shape)
         next_piece = self.get_shape(gen_shape)
         clock = pg.time.Clock()
+        play_time = 0
         fall_time = 0
-        fall_delay = 1000
+        fall_delay = 40
+        piece_used = 1
         score = 0
 
         while run:
             fall_time += clock.get_rawtime()
+            play_time += clock.get_rawtime()
             clock.tick()
 
             if fall_time > fall_delay:
@@ -276,6 +284,10 @@ class Game:
                     current_piece.row -= 1
                     get_new_piece = True
 
+            curr_state = self.get_state(locked_grid, current_piece)
+            action = organism.choose_action(curr_state)
+
+            '''
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     run = False
@@ -307,10 +319,45 @@ class Game:
                             current_piece.row += 1
                         current_piece.row -= 1
                         get_new_piece = True
+                        
+
+            for event in pg.event.get():
+                if event.type == pg.QUIT:
+                    run = False
+                    pg.display.quit()
+
+            '''
+
+            if action == Game.LEFT:
+                current_piece.col -= 1
+                if not self.valid_space(current_piece, locked_grid):
+                    current_piece.col += 1
+            if action == Game.RIGHT:
+                current_piece.col += 1
+                if not self.valid_space(current_piece, locked_grid):
+                    current_piece.col -= 1
+            if action == Game.DOWN:
+                current_piece.row += 1
+                if not self.valid_space(current_piece, locked_grid):
+                    current_piece.row -= 1
+            if action == Game.UP:
+                current_piece.rotation += 1
+                if not self.valid_space(current_piece, locked_grid):
+                    current_piece.rotation -= 1
+            #if event.key == pg.K_z:
+            #    current_piece.rotation -= 1
+            #    if not self.valid_space(current_piece, locked_grid):
+            #        current_piece.rotation += 1
+            if action == Game.SPACE:
+                while self.valid_space(current_piece, locked_grid):
+                    current_piece.row += 1
+                current_piece.row -= 1
+                get_new_piece = True
 
             curr_piece_pos = self.convert_shape_format(current_piece)
 
             if get_new_piece:
+                piece_used += 1
                 for row, col in curr_piece_pos:
                     if row > -1:
                         locked_grid[row][col] = current_piece.color
@@ -329,41 +376,58 @@ class Game:
                 if row > -1:
                     curr_grid[row][col] = current_piece.color
 
-            self.draw_window(win, curr_grid, score)
-            self.draw_next_shape(next_piece, win)
-            pg.display.update()
+            if show:
+                self.draw_window(self.win, curr_grid, score)
+                self.draw_next_shape(next_piece, self.win)
+                pg.display.update()
 
             if check_lost:
                 if self.valid_space(current_piece, locked_grid):
                     check_lost = False
                 else:
-                    self.draw_text_middle(win, "YOU LOST!", 80, (255, 255, 255))
+                    organism.fitness = score*1000 + play_time/10 + piece_used*100
+                    run = False
+                    '''
+                    self.draw_text_middle(self.win, "YOU LOST!", 80, (255, 255, 255))
                     pg.display.update()
                     pg.time.delay(1500)
                     run = False
+                    '''
 
     def main_menu(self):
-        win = pg.display.set_mode((Game.SCREEN_WIDTH, Game.SCREEN_HEIGHT))
         pg.display.set_caption('Tetris')
 
         run = True
         while run:
-            win.fill(Game.EMPTY)
-            self.draw_text_middle(win, 'Press Any Key To Play', 60, (255, 255, 255))
+            self.win.fill(Game.EMPTY)
+            self.draw_text_middle(self.win, 'Press Any Key To Play', 60, (255, 255, 255))
             pg.display.update()
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     run = False
                 if event.type == pg.KEYDOWN:
-                    self.game_start(win)
+                    self.game_start()
 
         pg.display.quit()
+
+    def get_state(self, locked_grid, current_piece):
+        state = []
+        for col in range(Game.NUM_COLS):
+            for row in range(Game.NUM_ROWS-1, -1, -1):
+                if locked_grid[row][col] == Game.EMPTY or row == 0:
+                    state.append(row/Game.NUM_ROWS)
+                    break
+
+        state.extend([current_piece.row/(Game.NUM_ROWS-1), current_piece.col/(Game.NUM_COLS-1), current_piece.shape_idx/6, current_piece.rotation/3])
+
+        return state
 
 
 class Piece:
     def __init__(self, row, col, shape_idx):
         self.row = row
         self.col = col
+        self.shape_idx = shape_idx
         self.shape = Game.shapes[shape_idx]
         self.color = Game.shape_colors[shape_idx]
         self.rotation = 0
