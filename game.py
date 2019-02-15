@@ -224,10 +224,25 @@ class Game:
 
         surface.blit(label, (sx + 10, sy - 30))
 
+    def draw_info(self, surface, info, fit):
+        font = pg.font.SysFont('comicsans', 30)
+        sx = Game.GRID_START_X - 240
+        sy = Game.GRID_START_Y - 90
+
+        information = info + ["{:.3f}".format(fit)]
+        str_list = ["generation", "population", "num_species", "species", "organism", "nodes", "connections", "innovation #", "fitness"]
+
+        for i in range(len(str_list)):
+            text = str_list[i] + ": " + str(information[i])
+            label = font.render(text, 1, (255, 255, 255))
+            surface.blit(label, (sx, sy))
+            sy += 30
+            if i == 0 or i == 4 or i == 7:
+                sy += 20
+
     def draw_window(self, surface, grid, score=0):
         surface.fill((0, 0, 0))
 
-        pg.font.init()
         font = pg.font.SysFont('comicsans', 60)
         label = font.render('Tetris', 1, (255, 255, 255))
 
@@ -256,7 +271,9 @@ class Game:
 
         self.draw_grid(surface, grid)
 
-    def game_start(self, organism, show):
+    def game_start(self, organism, show, info):
+        if show:
+            pg.font.init()
         locked_grid = self.create_grid()
         gen_shape = []
 
@@ -266,15 +283,14 @@ class Game:
         current_piece = self.get_shape(gen_shape)
         next_piece = self.get_shape(gen_shape)
         clock = pg.time.Clock()
-        play_time = 0
         fall_time = 0
         fall_delay = 40
-        piece_used = 1
         score = 0
+        fitness = 0
 
         while run:
             fall_time += clock.get_rawtime()
-            play_time += clock.get_rawtime()
+            fitness += clock.get_rawtime()/500
             clock.tick()
 
             if fall_time > fall_delay:
@@ -318,14 +334,7 @@ class Game:
                         while self.valid_space(current_piece, locked_grid):
                             current_piece.row += 1
                         current_piece.row -= 1
-                        get_new_piece = True
-                        
-
-            for event in pg.event.get():
-                if event.type == pg.QUIT:
-                    run = False
-                    pg.display.quit()
-
+                        get_new_piece = True            
             '''
 
             if action == Game.LEFT:
@@ -357,16 +366,20 @@ class Game:
             curr_piece_pos = self.convert_shape_format(current_piece)
 
             if get_new_piece:
-                piece_used += 1
+                fitness += 1
                 for row, col in curr_piece_pos:
                     if row > -1:
                         locked_grid[row][col] = current_piece.color
                 current_piece = next_piece
                 next_piece = self.get_shape(gen_shape)
                 locked_grid, num_cleared_rows = self.clear_rows(locked_grid)
-                score += (0, 5, 10, 20, 40)[num_cleared_rows]
+                point = (0, 5, 10, 20, 40)[num_cleared_rows]
+                score += point
+                fitness += point*10
                 if self.check_all_clear(locked_grid):
-                    score += 80
+                    point = 80
+                    score += point
+                    fitness += point*10
                 get_new_piece = False
                 check_lost = True
 
@@ -379,15 +392,14 @@ class Game:
             if show:
                 self.draw_window(self.win, curr_grid, score)
                 self.draw_next_shape(next_piece, self.win)
+                self.draw_info(self.win, info, fitness)
                 pg.display.update()
 
             if check_lost:
                 if self.valid_space(current_piece, locked_grid):
                     check_lost = False
                 else:
-                    #print("score: " + str(score) + ", play_time: " + str(play_time/1000) + "s, piece_used: " + str(piece_used))
-                    organism.fitness = score*100 + play_time/100 + piece_used*5
-                    #print("fitness: " + str(organism.fitness) + '\n')
+                    organism.fitness = fitness
                     run = False
                     '''
                     self.draw_text_middle(self.win, "YOU LOST!", 80, (255, 255, 255))
