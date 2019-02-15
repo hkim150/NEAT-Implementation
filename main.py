@@ -15,22 +15,18 @@ def main():
         new_genome.mutate()
         gen.add_organism(Organism(new_genome))
 
-    for _ in range(max_generations):
-        show = False
-        if gen.generation_number > max_generations * 0.8:
+    show = False
+    for curr_g in range(max_generations):
+        pop = gen.population
+        num_sp = len(gen.species)
+        if gen.generation_number > max_generations * 0.0:
             game.win = pg.display.set_mode((Game.SCREEN_WIDTH, Game.SCREEN_HEIGHT))
             show = True
-        s_num = 0
-        for s in gen.species:
-            s_num += 1
-            o_num = 0
-            for organism in s.organisms:
-                o_num += 1
-                print("generation: " + str(gen.generation_number) + ", population: " + str(
-                    gen.population) + ", num species: " + str(len(gen.species)) + ", species: " + str(
-                    s_num) + ", organism: " + str(o_num))
-                #print("num_nodes: " + str(len(organism.genome.nodes)) + " num_connections: " + str(len(organism.genome.connections)))
-                game.game_start(organism, show)
+        for curr_s, s in enumerate(gen.species):
+            for curr_o, organism in enumerate(s.organisms):
+                info = [curr_g + 1, pop, num_sp, curr_s + 1, curr_o + 1]
+                info.extend(organism.genome.get_genome_info())
+                game.game_start(organism, show, info)
 
         gen.next_generation()
 
