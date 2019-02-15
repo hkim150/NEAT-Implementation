@@ -113,6 +113,17 @@ class Genome:
 
         return newGenome
 
+    def get_genome_info(self):
+        nodes = set()
+        num_connection = 0
+        for connection in self.connections:
+            if connection.expressed:
+                num_connection += 1
+                nodes.add(connection.inNodeId)
+                nodes.add(connection.outNodeId)
+
+        return [len(nodes), num_connection, ConnectionGene.nextInnovationNumber-1]
+
     @staticmethod
     def cross_over(parent1, parent2):
         child = Genome()
