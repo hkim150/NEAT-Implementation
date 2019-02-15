@@ -385,7 +385,9 @@ class Game:
                 if self.valid_space(current_piece, locked_grid):
                     check_lost = False
                 else:
-                    organism.fitness = score*1000 + play_time/10 + piece_used*100
+                    #print("score: " + str(score) + ", play_time: " + str(play_time/1000) + "s, piece_used: " + str(piece_used))
+                    organism.fitness = score*100 + play_time/100 + piece_used*5
+                    #print("fitness: " + str(organism.fitness) + '\n')
                     run = False
                     '''
                     self.draw_text_middle(self.win, "YOU LOST!", 80, (255, 255, 255))
