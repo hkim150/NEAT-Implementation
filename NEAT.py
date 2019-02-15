@@ -4,10 +4,11 @@ from math import exp
 
 class Genome:
     c1, c2, c3 = 1.0, 1.0, 0.4
-    d_t = 2.5
-    disable_chance = 0.75
+    d_t = 3.0
+    cross_disable_chance = 0.75
+    flip_enable_chance = 0.08
     weight_mutation_chance = 0.8
-    add_node_mutation_chance = 0.08
+    add_node_mutation_chance = 0.1
     add_connection_mutation_chance = 0.15
     perturbation_chance = 0.9
 
@@ -25,6 +26,8 @@ class Genome:
     def mutate(self):
         if random.random() < Genome.weight_mutation_chance:
             self.weight_mutation()
+        if random.random() < Genome.flip_enable_chance:
+            self.flip_enable_mutation()
         if random.random() < Genome.add_node_mutation_chance:
             self.add_node_mutation()
         if random.random() < Genome.add_connection_mutation_chance:
@@ -37,6 +40,13 @@ class Genome:
                 connection.weight *= random_val
             else:
                 connection.weight = random_val
+
+    def flip_enable_mutation(self):
+        if len(self.connections) < 1:
+            return
+
+        connection = random.choice(self.connections)
+        connection.expressed = not connection.expressed
 
     def add_node_mutation(self):
         if len(self.connections) < 1:
@@ -113,7 +123,7 @@ class Genome:
                 par2_connection = parent2.get_connection_gene(connection.innovationNumber)
                 inherited_connection = connection.copy() if random.randint(0,1) == 0 else par2_connection.copy()
                 if connection.expressed != par2_connection.expressed:
-                    inherited_connection.expressed = False if random.random() < Genome.disable_chance else True
+                    inherited_connection.expressed = False if random.random() < Genome.cross_disable_chance else True
                 child.connections.append(inherited_connection)
             else:
                 child.connections.append(connection.copy())
@@ -183,14 +193,14 @@ class NodeGene:
 
 
 class Generation:
-    nextGenerationNumber = 0
-    max_population = 50
+    max_population = 20
+    stale_tolerance = 10
+    weak_tolerance = 0.9
     clone_chance = 0.25
     mate_chance = 0.75
 
     def __init__(self):
-        self.generation_number = Generation.nextGenerationNumber
-        Generation.nextGenerationNumber += 1
+        self.generation_number = 1
         self.species = []
         self.population = 0
 
@@ -203,60 +213,119 @@ class Generation:
                     return
         self.species.append(Species(organism))
 
-    def get_next_generation(self):
-        species_and_avg_fitness = []
-        sum_avg_fitness = 0.0
+    def next_generation(self):
+        avg_species_fitness = 0.0
         for s in self.species:
-            avg_fitness = s.get_average_fitness()
-            sum_avg_fitness += avg_fitness
-            species_and_avg_fitness.append([s, avg_fitness])
+            s.evaluate_self()
+            s.cull_half()
+            s.update_avg_fitness()
+            avg_species_fitness += s.average_fitness
 
-        nextGeneration = Generation()
-        for s, avg in species_and_avg_fitness:
-            max_offspring_num = round((avg/max(sum_avg_fitness,1))*Generation.max_population)
-            offspring = s.get_offsprings(max_offspring_num)
-            nextGeneration.species.append(offspring)
-            nextGeneration.population += offspring.population
+        avg_species_fitness /= len(self.species)
 
-        return nextGeneration
+        self.species.sort(key=lambda x: x.stale_generation_count)
+        for _ in range(len(self.species)):
+            if self.species[-1].stale_generation_count >= Generation.stale_tolerance:
+                del self.species[-1]
+
+        self.species.sort(key=lambda x: x.max_fitness, reverse=True)
+        for _ in range(len(self.species)):
+            if self.species[-1].max_fitness < avg_species_fitness*Generation.weak_tolerance:
+                del self.species[-1]
+
+        population = 0
+        for s in self.species:
+            population += s.population
+
+        offsprings = []
+        for s in self.species:
+            max_offspring = s.average_fitness/avg_species_fitness * (Generation.max_population - population)
+            offsprings.extend(s.get_offsprings(max_offspring))
+
+        for offspring in offsprings:
+            self.add_organism(offspring)
+
+        population = 0
+        for s in self.species:
+            population += s.population
+
+        self.population = population
+
+        self.generation_number += 1
 
 
 class Species:
-    def __init__(self, organism=None):
+    def __init__(self, organism):
         self.organisms = [organism]
-        self.population = len(self.organisms)
+        self.population = 1
         self.representative = organism
+        self.average_fitness = 0.0
+        self.max_fitness = 0.0
+        self.historical_max_fitness = 0.0
+        self.stale_generation_count = 0
 
     def add_organism(self, organism):
         self.organisms.append(organism)
         self.population += 1
 
-    def get_average_fitness(self):
+    def evaluate_self(self):
+        self.update_avg_fitness()
+
+        max_found = 0.0
+        for organism in self.organisms:
+            max_found = max(max_found, organism.fitness)
+
+        self.max_fitness = max_found
+
+        if self.max_fitness > self.historical_max_fitness:
+            self.historical_max_fitness = self.max_fitness
+            self.stale_generation_count = 0
+        else:
+            self.stale_generation_count += 1
+
+    def update_avg_fitness(self):
         fitness_sum = 0.0
         for organism in self.organisms:
             fitness_sum += organism.fitness
 
-        return fitness_sum / self.population
+        self.average_fitness = fitness_sum / self.population
+
+    def cull_half(self):
+        self.organisms.sort(key=lambda x: x.fitness, reverse=True)
+        self.representative = self.organisms[0]
+        for _ in range(self.population//2):
+            del self.organisms[-1]
+
+        self.population = len(self.organisms)
 
     def get_offsprings(self, max_offspring_num):
-        rank = sorted(self.organisms, key=lambda x: x.fitness, reverse=True)
-        champion = rank[0]
-        offsprings = Species(champion.copy())
-        survivors = rank[:len(rank)//2]
-        num_offspring = min(self.population, max_offspring_num)
+        offsprings = []
+        num_offspring = 0
+        if self.population >= max_offspring_num:
+            num_offspring = max_offspring_num
+        else:
+            num_offspring = min(self.population*2, max_offspring_num)
 
-        for survivor in random.sample(survivors, round(num_offspring*Generation.clone_chance)):
-            offsprings.add_organism(survivor.copy())
+        self.organisms.sort(key=lambda x: x.fitness, reverse=True)
+        champion = self.organisms[0]
+        offsprings.append(champion.copy())
+        num_offspring -= 1
+        if num_offspring > 0:
+            offsprings.append(Organism(Genome.cross_over(champion.genome, random.choice(self.organisms).genome)))
+            num_offspring -= 1
 
-        for _ in range(round(num_offspring*Generation.mate_chance)-1):
-            parent1, parent2 = random.sample(survivors, 2)
+        for parent in random.sample(self.organisms, round(num_offspring*Generation.clone_chance)):
+            offsprings.append(parent.copy())
+
+        for _ in range(round(num_offspring*Generation.mate_chance)):
+            parent1, parent2 = random.sample(self.organisms, 2)
             if parent1.fitness > parent2.fitness:
-                offsprings.add_organism(Organism(Genome.cross_over(parent1.genome, parent2.genome)))
+                offsprings.append(Organism(Genome.cross_over(parent1.genome, parent2.genome)))
             else:
-                offsprings.add_organism(Organism(Genome.cross_over(parent2.genome, parent1.genome)))
+                offsprings.append(Organism(Genome.cross_over(parent2.genome, parent1.genome)))
 
-        for organism in offsprings.organisms:
-            organism.genome.mutate()
+        for offspring in offsprings:
+            offspring.genome.mutate()
 
         return offsprings
 
