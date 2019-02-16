@@ -216,7 +216,7 @@ class Generation:
     weak_tolerance = 0.9
     clone_chance = 0.25
     mate_chance = 0.75
-    activation_threshold = 0.0
+    activation_threshold = 0.5
 
     def __init__(self):
         self.generation_number = 1
@@ -405,12 +405,12 @@ class Organism:
         first = True
         for id in output_node_ids:
             if id in output_value:
-                if first:
-                    actions.append(id)
-                    max_value = output_value[id]
-                    first = False
-                    continue
                 if output_value[id] > Generation.activation_threshold:
+                    if first:
+                        actions.append(id)
+                        max_value = output_value[id]
+                        first = False
+                        continue
                     if output_value[id] > max_value:
                         max_value = output_value[id]
                         actions.pop()
