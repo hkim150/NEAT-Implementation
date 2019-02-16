@@ -11,15 +11,15 @@ class Game:
     screen_y = (window_height - screen_height) // 2
 
     ice_height = 10
-    wall_thickness = 8
+    wall_thickness = 6
     white_space_width = screen_width - 2*wall_thickness
     white_space_height = screen_height - wall_thickness - ice_height
     radius = 8
     hole_velocity = 1.5
-    hole_width = 70
-    hole_thickness = 16
+    hole_width = 60
+    hole_thickness = 30
     move_interval = 0
-    hole_interval = 600
+    hole_interval = 500
 
     colors = {
         'black':(0, 0, 0),
@@ -98,7 +98,7 @@ class Game:
         else:
             a_str = ""
             for i, action in enumerate(actions):
-                comma = "" if i==0 else ", "
+                comma = "" if i == 0 else ", "
                 a_str += comma + Game.actions_str[action - Game.num_inputs]
             numbers.append(a_str)
 
@@ -146,11 +146,9 @@ class Game:
         player_x = 0
         holes = []
         hole_delay = 0
-        holes.append([(random.random() - 0.5) * (Game.white_space_width - Game.hole_width), Game.hole_thickness//2])
+        holes.append([(random.random() - 0.5) * (Game.white_space_width - Game.hole_width), -1*Game.hole_thickness//2])
 
-        do_nothing_tolerance = 200
-        do_nothing_delay = 0
-        max_velocity = 4.0
+        max_velocity = 3.5
         velocity = (random.random() - 0.5) * max_velocity
 
         if user_mode:
@@ -163,7 +161,6 @@ class Game:
 
             move_delay += clock.get_rawtime()
             hole_delay += clock.get_rawtime()
-            do_nothing_delay += clock.get_rawtime()
 
             for event in pg.event.get():
                 if event.type == pg.QUIT:
@@ -185,8 +182,6 @@ class Game:
                 actions = organism.choose_action([state[1]])
 
                 if len(actions) > 0:
-                    if not (Game.left in actions and Game.right in actions):
-                        do_nothing_delay = 0
                     for action in actions:
                         if action == Game.left:
                             velocity = max(velocity - 0.5, -1*max_velocity)
@@ -197,7 +192,7 @@ class Game:
                 hole[1] += Game.hole_velocity
 
             if len(holes) > 0:
-                if holes[0][1] + Game.hole_thickness/2 > Game.white_space_height:
+                if holes[0][1] - Game.hole_thickness/2 > Game.white_space_height:
                     del holes[0]
                     fitness += 15
 
@@ -208,18 +203,13 @@ class Game:
                 move_delay = 0
 
             if hole_delay > Game.hole_interval:
-                holes.append([(random.random() - 0.5) * (Game.white_space_width - Game.hole_width), Game.hole_thickness//2])
+                holes.append([(random.random() - 0.5) * (Game.white_space_width - Game.hole_width), -1* Game.hole_thickness//2])
                 hole_delay = 0
-
-            if not user_mode:
-                if fitness < 100:
-                    if do_nothing_delay > do_nothing_tolerance:
-                        game_end = True
 
             pg.draw.rect(window, Game.colors['white'], (Game.screen_x + Game.wall_thickness, Game.screen_y + Game.wall_thickness, Game.white_space_width, Game.white_space_height), 0)
             for hole in holes:
-                pg.draw.rect(window, Game.colors['red'], (Game.screen_x + Game.wall_thickness, Game.screen_y + Game.wall_thickness + int(hole[1] - Game.hole_thickness/2), Game.white_space_width, Game.hole_thickness), 0)
-                pg.draw.rect(window, Game.colors['white'], (Game.screen_x + Game.screen_width//2 + int(hole[0] - Game.hole_width/2), Game.screen_y + Game.wall_thickness + int(hole[1] - Game.hole_thickness/2), Game.hole_width, Game.hole_thickness), 0)
+                pg.draw.rect(window, Game.colors['red'], (Game.screen_x + Game.wall_thickness, max(1, int(hole[1] - Game.hole_thickness/2)) + Game.screen_y + Game.wall_thickness, Game.white_space_width, min(Game.hole_thickness, Game.white_space_height - int(hole[1]) + Game.hole_thickness/2, int(Game.hole_thickness//2 + hole[1]))), 0)
+                pg.draw.rect(window, Game.colors['white'], (Game.screen_x + Game.screen_width//2 + int(hole[0] - Game.hole_width/2), max(1, int(hole[1] - Game.hole_thickness/2)) + Game.screen_y + Game.wall_thickness, Game.hole_width, min(Game.hole_thickness, Game.white_space_height - int(hole[1] - Game.hole_thickness/2), int(Game.hole_thickness//2 + hole[1]))), 0)
             pg.draw.circle(window, Game.colors['blue'], (Game.screen_x + Game.screen_width//2 + int(player_x), Game.screen_y + Game.screen_height - Game.ice_height - Game.radius), Game.radius, 0)
             self.draw_fitness(window, fitness, fit_x, fit_y)
             if not user_mode:
