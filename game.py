@@ -34,11 +34,11 @@ class Game:
         'ice':(0,255,255)
     }
 
-    num_inputs = 4
+    num_inputs = 1
     num_actions = 2
     actions_str = ['Left', 'Right']
-    left = 4
-    right = 5
+    left = 1
+    right = 2
 
     def draw_background(self, window):
         window.fill(Game.colors['white'])
@@ -182,7 +182,7 @@ class Game:
 
             if not user_mode:
                 state = self.get_state(player_x, holes, velocity)
-                actions = organism.choose_action(state)
+                actions = organism.choose_action([state[1]])
 
                 if len(actions) > 0:
                     if not (Game.left in actions and Game.right in actions):
