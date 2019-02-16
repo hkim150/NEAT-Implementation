@@ -3,3 +3,5 @@ Implemented the Generic Algorithm of NeuroEvolution of Augmenting Topology (NEAT
 
 Link to the Paper regarding the NEAT method
 http://nn.cs.utexas.edu/downloads/papers/stanley.ec02.pdf
+
+Applied on custom made game.
