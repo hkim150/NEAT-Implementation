@@ -3,446 +3,229 @@ from NEAT import *
 
 
 class Game:
-    SCREEN_WIDTH = 800
-    SCREEN_HEIGHT = 700
-    NUM_ROWS = 20
-    NUM_COLS = 10
-    BLOCK_SIZE = 30
-    GAME_WIDTH = NUM_COLS * BLOCK_SIZE
-    GAME_HEIGHT = NUM_ROWS * BLOCK_SIZE
+    window_width = 1000
+    window_height = 500
+    screen_width = 400
+    screen_height = 400
+    screen_x = (window_width - screen_width) // 2
+    screen_y = (window_height - screen_height) // 2
 
-    GRID_START_X = (SCREEN_WIDTH - GAME_WIDTH) // 2
-    GRID_START_Y = SCREEN_HEIGHT - GAME_HEIGHT
+    ice_height = 10
+    wall_thickness = 8
+    white_space_width = screen_width - 2*wall_thickness
+    white_space_height = screen_height - wall_thickness - ice_height
+    radius = 8
+    hole_velocity = 1.5
+    hole_width = 70
+    hole_thickness = 16
+    move_interval = 0
+    hole_interval = 600
 
-    S = [['.....',
-          '..00.',
-          '.00..',
-          '.....',
-          '.....'],
-         ['.....',
-          '..0..',
-          '..00.',
-          '...0.',
-          '.....']]
+    colors = {
+        'black':(0, 0, 0),
+        'red':(255, 0, 0),
+        'orange':(255, 165, 0),
+        'yellow':(255, 255, 0),
+        'green':(0, 255, 0),
+        'blue':(0, 0, 255),
+        'purple':(128, 0, 128),
+        'white':(255, 255, 255),
+        'gray':(160,160,160),
+        'ice':(0,255,255)
+    }
 
-    Z = [['.....',
-          '.00..',
-          '..00.',
-          '.....',
-          '.....'],
-         ['.....',
-          '..0..',
-          '.00..',
-          '.0...',
-          '.....']]
+    num_inputs = 4
+    num_actions = 2
+    actions_str = ['Left', 'Right']
+    left = 4
+    right = 5
 
-    I = [['..0..',
-          '..0..',
-          '..0..',
-          '..0..',
-          '.....'],
-         ['.....',
-          '0000.',
-          '.....',
-          '.....',
-          '.....']]
+    def draw_background(self, window):
+        window.fill(Game.colors['white'])
+        pg.draw.rect(window, Game.colors['ice'], (Game.screen_x, Game.screen_y + Game.screen_height - Game.ice_height, Game.screen_width, Game.ice_height), 0)
+        pg.draw.rect(window, Game.colors['black'], (Game.screen_x, Game.screen_y, Game.screen_width, Game.wall_thickness), 0)
+        pg.draw.rect(window, Game.colors['black'], (Game.screen_x, Game.screen_y, Game.wall_thickness, Game.screen_height), 0)
+        pg.draw.rect(window, Game.colors['black'], (Game.screen_x + Game.screen_width - Game.wall_thickness, Game.screen_y, Game.wall_thickness, Game.screen_height), 0)
 
-    O = [['.....',
-          '.00..',
-          '.00..',
-          '.....',
-          '.....']]
+    def check_out_of_bound(self, player_x):
+        left_bound = -1 * Game.screen_width//2 + Game.wall_thickness + Game.radius
+        if player_x < left_bound:
+            return True, left_bound
 
-    J = [['.....',
-          '.0...',
-          '.000.',
-          '.....',
-          '.....'],
-         ['.....',
-          '..00.',
-          '..0..',
-          '..0..',
-          '.....'],
-         ['.....',
-          '.....',
-          '.000.',
-          '...0.',
-          '.....'],
-         ['.....',
-          '..0..',
-          '..0..',
-          '.00..',
-          '.....']]
+        right_bound = Game.screen_width//2 - Game.wall_thickness - Game.radius
+        if player_x > right_bound:
+            return True, right_bound
 
-    L = [['.....',
-          '...0.',
-          '.000.',
-          '.....',
-          '.....'],
-         ['.....',
-          '..0..',
-          '..0..',
-          '..00.',
-          '.....'],
-         ['.....',
-          '.....',
-          '.000.',
-          '.0...',
-          '.....'],
-         ['.....',
-          '.00..',
-          '..0..',
-          '..0..',
-          '.....']]
+        return False, player_x
 
-    T = [['.....',
-          '..0..',
-          '.000.',
-          '.....',
-          '.....'],
-         ['.....',
-          '..0..',
-          '..00.',
-          '..0..',
-          '.....'],
-         ['.....',
-          '.....',
-          '.000.',
-          '..0..',
-          '.....'],
-         ['.....',
-          '..0..',
-          '.00..',
-          '..0..',
-          '.....']]
+    def check_game_end(self, player_x, holes):
+        if len(holes) < 1:
+            return False
 
-    shapes = (S, Z, I, O, J, L, T)
-    shape_colors = [(0, 255, 0), (255, 0, 0), (0, 255, 255), (255, 255, 0), (0, 0, 255), (255, 165, 0), (128, 0, 128)]
-    NUM_SHAPE = len(shapes)
-    EMPTY = (0, 0, 0)
-    NUM_INPUT = 14
-    NUM_ACTIONS = 5
-    UP, DOWN, LEFT, RIGHT, SPACE = 14, 15, 16, 17, 18
+        if holes[0][1] > Game.white_space_height - Game.hole_thickness/2 - Game.radius*2:
+            if player_x - Game.radius < holes[0][0] - Game.hole_width/2 or player_x + Game.radius > holes[0][0] + Game.hole_width/2:
+                return True
 
-    def __init__(self):
-        self.win = None
+        return False
 
-    def create_grid(self):
-        return [[Game.EMPTY for _ in range(Game.NUM_COLS)] for _ in range(Game.NUM_ROWS)]
-
-    def convert_shape_format(self, piece):
-        positions = []
-        rot = piece.rotation
-
-        if rot < 0:
-            rot += len(piece.shape)
-        format = piece.shape[rot % len(piece.shape)]
-
-        for row, row_val in enumerate(format):
-            for col, col_val in enumerate(row_val):
-                if col_val == '0':
-                    positions.append((piece.row + row - 2, piece.col + col - 2))
-
-        return positions
-
-    def valid_space(self, piece, grid):
-        positions = self.convert_shape_format(piece)
-
-        for (row, col) in positions:
-            if row >= Game.NUM_ROWS or col < 0 or col >= Game.NUM_COLS:
-                return False
-            if row > -1 and grid[row][col] != Game.EMPTY:
-                return False
-
-        return True
-
-    def get_shape(self, gen_shape):
-        if len(gen_shape) < 1:
-            gen_shape.extend([n for n in range(Game.NUM_SHAPE)])
-            random.shuffle(gen_shape)
-
-        return Piece(0, 5, gen_shape.pop())
-
-    def draw_text_middle(self, surface, text, size, color):
+    def draw_info(self, surface, info):
         pg.font.init()
-
-        font = pg.font.SysFont("comicsans", size, bold=True)
-        label = font.render(text, 1, color)
-
-        surface.blit(label, (Game.GRID_START_X + Game.GAME_WIDTH / 2 - (label.get_width() / 2),
-                             Game.GRID_START_Y + Game.GAME_HEIGHT / 2 - label.get_height() / 2))
-
-    def draw_grid(self, surface, grid):
-        sx = Game.GRID_START_X
-        sy = Game.GRID_START_Y
-
-        for row in range(Game.NUM_ROWS):
-            pg.draw.line(surface, (128, 128, 128), (sx, sy + row * Game.BLOCK_SIZE),
-                         (sx + Game.GAME_WIDTH, sy + row * Game.BLOCK_SIZE))
-
-        for col in range(Game.NUM_COLS):
-            pg.draw.line(surface, (128, 128, 128), (sx + col * Game.BLOCK_SIZE, sy),
-                         (sx + col * Game.BLOCK_SIZE, sy + Game.GAME_HEIGHT))
-
-    def clear_rows(self, grid):
-        num_cleared_lines = 0
-        remainder = []
-        for row in range(Game.NUM_ROWS - 1, -1, -1):
-            r = row + num_cleared_lines
-            if Game.EMPTY not in grid[r]:
-                num_cleared_lines += 1
-                if r > 0:
-                    remainder = grid[:r][:]
-                    remainder.extend(grid[r + 1:][:])
-                else:
-                    remainder = grid[r + 1:][:]
-                grid = [[Game.EMPTY for _ in range(Game.NUM_COLS)]]
-                grid.extend(remainder)
-
-        return grid, num_cleared_lines
-
-    def check_all_clear(self, grid):
-        for row in range(Game.NUM_ROWS - 1, -1, -1):
-            for val in grid[row]:
-                if val != Game.EMPTY:
-                    return False
-
-        return True
-
-    def draw_next_shape(self, piece, surface):
         font = pg.font.SysFont('comicsans', 30)
-        label = font.render('Next Shape', 1, (255, 255, 255))
-
-        sx = Game.GRID_START_X + Game.GAME_WIDTH + 50
-        sy = Game.GRID_START_Y + Game.GAME_HEIGHT / 2 - 100
-
-        for i, row in enumerate(piece.shape[0]):
-            for j, col in enumerate(row):
-                if col == '0':
-                    pg.draw.rect(surface, piece.color,
-                                 (sx + j * Game.BLOCK_SIZE, sy + i * Game.BLOCK_SIZE, Game.BLOCK_SIZE, Game.BLOCK_SIZE), 0)
-
-        surface.blit(label, (sx + 10, sy - 30))
-
-    def draw_info(self, surface, info, fit):
-        font = pg.font.SysFont('comicsans', 30)
-        sx = Game.GRID_START_X - 240
-        sy = Game.GRID_START_Y - 90
-
-        information = info + ["{:.3f}".format(fit)]
-        str_list = ["generation", "population", "num_species", "species", "organism", "nodes", "connections", "innovation #", "fitness"]
+        sx = 100
+        sy = Game.screen_y
+        str_list = ["generation", "population", "num_species", "species", "organism", "nodes", "connections", "innovation #"]
 
         for i in range(len(str_list)):
-            text = str_list[i] + ": " + str(information[i])
-            label = font.render(text, 1, (255, 255, 255))
+            text = str_list[i] + ": " + str(info[i])
+            label = font.render(text, 1, Game.colors['black'])
             surface.blit(label, (sx, sy))
             sy += 30
-            if i == 0 or i == 4 or i == 7:
+            if i == 0 or i == 2 or i == 4 or i == 7:
                 sy += 20
 
-    def draw_window(self, surface, grid, score=0):
-        surface.fill((0, 0, 0))
+        label = font.render("fitness: ", 1, Game.colors['black'])
+        surface.blit(label, (sx, sy))
 
-        font = pg.font.SysFont('comicsans', 60)
-        label = font.render('Tetris', 1, (255, 255, 255))
+        return sx, sy
 
-        surface.blit(label, (Game.GRID_START_X + Game.GAME_WIDTH / 2 - (label.get_width() / 2), 30))
+    def draw_input_output(self, surface, state, actions):
+        numbers = []
+        for s in state:
+            numbers.append("{:.2f}".format(s))
 
-        # current score
+        if len(actions) < 1:
+            numbers.append("Do Nothing")
+        else:
+            a_str = ""
+            for i, action in enumerate(actions):
+                comma = "" if i==0 else ", "
+                a_str += comma + Game.actions_str[action - Game.num_inputs]
+            numbers.append(a_str)
+
+        texts = ["player_x", "del_x", "del_y", "velocity", "actions"]
+
         font = pg.font.SysFont('comicsans', 30)
-        label = font.render('Score: ' + str(score), 1, (255, 255, 255))
+        sx = Game.screen_x + Game.screen_width + 20
+        sy = Game.screen_y
 
-        sx = Game.GRID_START_X + Game.GAME_WIDTH + 50
-        sy = Game.GRID_START_Y + Game.GAME_HEIGHT / 2 - 100
+        pg.draw.rect(surface, Game.colors['white'], (sx, sy, 250, 150), 0)
 
-        surface.blit(label, (sx + 20, sy + 160))
+        for i,v in enumerate(texts):
+            label = font.render(v + ": " + numbers[i], 1, Game.colors['black'])
+            surface.blit(label, (sx, sy))
+            sy += 20
 
-        sx = Game.GRID_START_X - 200
-        sy = Game.GRID_START_Y + 200
+    def draw_fitness(self, surface, fit, sx, sy):
+        font = pg.font.SysFont('comicsans', 30)
+        pg.draw.rect(surface, Game.colors['white'], (sx+80, sy, 100, 20), 0)
+        text = "{:.2f}".format(fit)
+        label = font.render(text, 1, Game.colors['black'])
+        surface.blit(label, (sx+80, sy))
 
-        surface.blit(label, (sx + 20, sy + 160))
+    def get_state(self, player_x, holes, velocity):
+        h_x, h_y = 0.0, 0.0
+        x = player_x / (Game.screen_width//2 - Game.wall_thickness - Game.radius)
+        if len(holes) > 0:
+            h_x, h_y = holes[0]
+            del_x = (h_x - player_x) / (Game.white_space_width - Game.hole_width/2 - Game.radius)
+            del_y = (Game.white_space_height - h_y - Game.radius) / (Game.white_space_height - Game.hole_thickness/2 - Game.radius)
+        state = [x, del_x, del_y, velocity]
 
-        for i in range(Game.NUM_ROWS):
-            for j in range(Game.NUM_COLS):
-                pg.draw.rect(surface, grid[i][j],
-                             (Game.GRID_START_X + j * Game.BLOCK_SIZE, Game.GRID_START_Y + i * Game.BLOCK_SIZE, Game.BLOCK_SIZE, Game.BLOCK_SIZE), 0)
+        return state
 
-        pg.draw.rect(surface, (255, 0, 0), (Game.GRID_START_X, Game.GRID_START_Y, Game.GAME_WIDTH, Game.GAME_HEIGHT), 5)
-
-        self.draw_grid(surface, grid)
-
-    def game_start(self, organism, show, info):
-        if show:
-            pg.font.init()
-        locked_grid = self.create_grid()
-        gen_shape = []
-
-        get_new_piece = False
-        check_lost = False
+    def game_start(self, window, organism, info, user_mode=False):
+        self.draw_background(window)
+        fit_x, fit_y = self.draw_info(window, info)
         run = True
-        current_piece = self.get_shape(gen_shape)
-        next_piece = self.get_shape(gen_shape)
+        game_end = False
         clock = pg.time.Clock()
-        fall_time = 0
-        fall_delay = 40
-        score = 0
         fitness = 0
 
+        move_delay = 0
+
+        player_x = 0
+        holes = []
+        hole_delay = 0
+        holes.append([(random.random() - 0.5) * (Game.white_space_width - Game.hole_width), Game.hole_thickness//2])
+
+        do_nothing_tolerance = 200
+        do_nothing_delay = 0
+        max_velocity = 4.0
+        velocity = (random.random() - 0.5) * max_velocity
+
+        if user_mode:
+            pg.key.set_repeat(100, 100)
+            Game.move_interval = 10
+
         while run:
-            fall_time += clock.get_rawtime()
-            fitness += clock.get_rawtime()/500
             clock.tick()
+            fitness += clock.get_rawtime()/100
 
-            if fall_time > fall_delay:
-                fall_time = 0
-                current_piece.row += 1
-                if not self.valid_space(current_piece, locked_grid) and current_piece.row > 0:
-                    current_piece.row -= 1
-                    get_new_piece = True
+            move_delay += clock.get_rawtime()
+            hole_delay += clock.get_rawtime()
+            do_nothing_delay += clock.get_rawtime()
 
-            curr_state = self.get_state(locked_grid, current_piece)
-            action = organism.choose_action(curr_state)
-
-            '''
             for event in pg.event.get():
                 if event.type == pg.QUIT:
                     run = False
                     pg.display.quit()
 
                 if event.type == pg.KEYDOWN:
-                    if event.key == pg.K_LEFT:
-                        current_piece.col -= 1
-                        if not self.valid_space(current_piece, locked_grid):
-                            current_piece.col += 1
-                    if event.key == pg.K_RIGHT:
-                        current_piece.col += 1
-                        if not self.valid_space(current_piece, locked_grid):
-                            current_piece.col -= 1
-                    if event.key == pg.K_DOWN:
-                        current_piece.row += 1
-                        if not self.valid_space(current_piece, locked_grid):
-                            current_piece.row -= 1
-                    if event.key == pg.K_UP:
-                        current_piece.rotation += 1
-                        if not self.valid_space(current_piece, locked_grid):
-                            current_piece.rotation -= 1
-                    if event.key == pg.K_z:
-                        current_piece.rotation -= 1
-                        if not self.valid_space(current_piece, locked_grid):
-                            current_piece.rotation += 1
-                    if event.key == pg.K_SPACE:
-                        while self.valid_space(current_piece, locked_grid):
-                            current_piece.row += 1
-                        current_piece.row -= 1
-                        get_new_piece = True            
-            '''
+                    if event.key == pg.K_ESCAPE:
+                            run = False
+                            pg.display.quit()
+                    if user_mode:
+                        if event.key == pg.K_LEFT:
+                            velocity -= 0.5
+                        if event.key == pg.K_RIGHT:
+                            velocity += 0.5
 
-            if action == Game.LEFT:
-                current_piece.col -= 1
-                if not self.valid_space(current_piece, locked_grid):
-                    current_piece.col += 1
-            if action == Game.RIGHT:
-                current_piece.col += 1
-                if not self.valid_space(current_piece, locked_grid):
-                    current_piece.col -= 1
-            if action == Game.DOWN:
-                current_piece.row += 1
-                if not self.valid_space(current_piece, locked_grid):
-                    current_piece.row -= 1
-            if action == Game.UP:
-                current_piece.rotation += 1
-                if not self.valid_space(current_piece, locked_grid):
-                    current_piece.rotation -= 1
-            #if event.key == pg.K_z:
-            #    current_piece.rotation -= 1
-            #    if not self.valid_space(current_piece, locked_grid):
-            #        current_piece.rotation += 1
-            if action == Game.SPACE:
-                while self.valid_space(current_piece, locked_grid):
-                    current_piece.row += 1
-                current_piece.row -= 1
-                get_new_piece = True
+            if not user_mode:
+                state = self.get_state(player_x, holes, velocity)
+                actions = organism.choose_action(state)
 
-            curr_piece_pos = self.convert_shape_format(current_piece)
+                if len(actions) > 0:
+                    if not (Game.left in actions and Game.right in actions):
+                        do_nothing_delay = 0
+                    for action in actions:
+                        if action == Game.left:
+                            velocity = max(velocity - 0.5, -1*max_velocity)
+                        if action == Game.right:
+                            velocity = min(velocity + 0.5, max_velocity)
 
-            if get_new_piece:
-                fitness += 1
-                for row, col in curr_piece_pos:
-                    if row > -1:
-                        locked_grid[row][col] = current_piece.color
-                current_piece = next_piece
-                next_piece = self.get_shape(gen_shape)
-                locked_grid, num_cleared_rows = self.clear_rows(locked_grid)
-                point = (0, 5, 10, 20, 40)[num_cleared_rows]
-                score += point
-                fitness += point*10
-                if self.check_all_clear(locked_grid):
-                    point = 80
-                    score += point
-                    fitness += point*10
-                get_new_piece = False
-                check_lost = True
+            for hole in holes:
+                hole[1] += Game.hole_velocity
 
-            curr_grid = [row.copy() for row in locked_grid]
+            if len(holes) > 0:
+                if holes[0][1] + Game.hole_thickness/2 > Game.white_space_height:
+                    del holes[0]
+                    fitness += 15
 
-            for row, col in curr_piece_pos:
-                if row > -1:
-                    curr_grid[row][col] = current_piece.color
+            if move_delay > Game.move_interval:
+                player_x += velocity
+                game_end, player_x = self.check_out_of_bound(player_x)
+                game_end = game_end or self.check_game_end(player_x, holes)
+                move_delay = 0
 
-            if show:
-                self.draw_window(self.win, curr_grid, score)
-                self.draw_next_shape(next_piece, self.win)
-                self.draw_info(self.win, info, fitness)
-                pg.display.update()
+            if hole_delay > Game.hole_interval:
+                holes.append([(random.random() - 0.5) * (Game.white_space_width - Game.hole_width), Game.hole_thickness//2])
+                hole_delay = 0
 
-            if check_lost:
-                if self.valid_space(current_piece, locked_grid):
-                    check_lost = False
-                else:
-                    organism.fitness = fitness
-                    run = False
-                    '''
-                    self.draw_text_middle(self.win, "YOU LOST!", 80, (255, 255, 255))
-                    pg.display.update()
-                    pg.time.delay(1500)
-                    run = False
-                    '''
+            if not user_mode:
+                if fitness < 100:
+                    if do_nothing_delay > do_nothing_tolerance:
+                        game_end = True
 
-    def main_menu(self):
-        pg.display.set_caption('Tetris')
-
-        run = True
-        while run:
-            self.win.fill(Game.EMPTY)
-            self.draw_text_middle(self.win, 'Press Any Key To Play', 60, (255, 255, 255))
+            pg.draw.rect(window, Game.colors['white'], (Game.screen_x + Game.wall_thickness, Game.screen_y + Game.wall_thickness, Game.white_space_width, Game.white_space_height), 0)
+            for hole in holes:
+                pg.draw.rect(window, Game.colors['red'], (Game.screen_x + Game.wall_thickness, Game.screen_y + Game.wall_thickness + int(hole[1] - Game.hole_thickness/2), Game.white_space_width, Game.hole_thickness), 0)
+                pg.draw.rect(window, Game.colors['white'], (Game.screen_x + Game.screen_width//2 + int(hole[0] - Game.hole_width/2), Game.screen_y + Game.wall_thickness + int(hole[1] - Game.hole_thickness/2), Game.hole_width, Game.hole_thickness), 0)
+            pg.draw.circle(window, Game.colors['blue'], (Game.screen_x + Game.screen_width//2 + int(player_x), Game.screen_y + Game.screen_height - Game.ice_height - Game.radius), Game.radius, 0)
+            self.draw_fitness(window, fitness, fit_x, fit_y)
+            if not user_mode:
+                self.draw_input_output(window, state, actions)
             pg.display.update()
-            for event in pg.event.get():
-                if event.type == pg.QUIT:
-                    run = False
-                if event.type == pg.KEYDOWN:
-                    self.game_start()
 
-        pg.display.quit()
-
-    def get_state(self, locked_grid, current_piece):
-        state = []
-        for col in range(Game.NUM_COLS):
-            for row in range(Game.NUM_ROWS-1, -1, -1):
-                if locked_grid[row][col] == Game.EMPTY or row == 0:
-                    state.append(row/Game.NUM_ROWS)
-                    break
-
-        state.extend([current_piece.row/(Game.NUM_ROWS-1), current_piece.col/(Game.NUM_COLS-1), current_piece.shape_idx/6, current_piece.rotation/3])
-
-        return state
-
-
-class Piece:
-    def __init__(self, row, col, shape_idx):
-        self.row = row
-        self.col = col
-        self.shape_idx = shape_idx
-        self.shape = Game.shapes[shape_idx]
-        self.color = Game.shape_colors[shape_idx]
-        self.rotation = 0
-
+            if game_end:
+                organism.fitness = fitness
+                run = False
