@@ -6,7 +6,7 @@ class Genome:
     c1, c2, c3 = 1.0, 1.0, 0.4
     d_t = 3.0
     cross_disable_chance = 0.75
-    flip_enable_chance = 0.08
+    flip_enable_chance = 0.02
     weight_mutation_chance = 0.8
     add_node_mutation_chance = 0.1
     add_connection_mutation_chance = 0.15
@@ -35,7 +35,7 @@ class Genome:
 
     def weight_mutation(self):
         for connection in self.connections:
-            random_val = random.random()*4 - 2
+            random_val = random.random() * 4 - 2
             if random.random() < Genome.perturbation_chance:
                 connection.weight *= random_val
             else:
@@ -51,7 +51,7 @@ class Genome:
     def add_node_mutation(self):
         if len(self.connections) < 1:
             return
-        
+
         connection = random.choice(self.connections)
         self.add_node(connection)
 
@@ -65,20 +65,29 @@ class Genome:
         self.nodes.append(NodeGene(middleNodeId, NodeGene.HIDDEN))
         NodeGene.nextId += 1
 
-        self.add_connection(outNodeId, middleNodeId, 1)
+        self.add_connection(outNodeId, middleNodeId, 1.0)
         self.add_connection(middleNodeId, inNodeId, weight)
 
     def add_connection_mutation(self):
+        count = [0, 0, 0]
+        for node in self.nodes:
+            count[node.type] += 1
+
+        combinations = count[0] * count[1] + count[1] * count[2] + count[2] * count[0]
+
+        if len(self.connections) >= combinations:
+            return
+
         while True:
             node1, node2 = random.sample(self.nodes, 2)
             if node1.type == node2.type:
                 continue
-            outNodeId = node1.id if node1.id < node2.id else node2.id
-            inNodeId = node2.id if node1.id < node2.id else node1.id
+            outNodeId = node1.id if node1.type < node2.type else node2.id
+            inNodeId = node2.id if node1.type < node2.type else node1.id
             if not self.check_connection_exists_from_node_ids(outNodeId, inNodeId):
                 break
 
-        self.add_connection(outNodeId, inNodeId, random.random()*2 - 1)
+        self.add_connection(outNodeId, inNodeId, random.random() * 2 - 1)
 
     def add_connection(self, outNodeId, inNodeId, weight):
         self.connections.append(ConnectionGene(outNodeId, inNodeId, weight, ConnectionGene.nextInnovationNumber, True))
@@ -114,15 +123,13 @@ class Genome:
         return newGenome
 
     def get_genome_info(self):
-        nodes = set()
+        num_nodes = len(self.nodes)
         num_connection = 0
         for connection in self.connections:
             if connection.expressed:
                 num_connection += 1
-                nodes.add(connection.inNodeId)
-                nodes.add(connection.outNodeId)
 
-        return [len(nodes), num_connection, ConnectionGene.nextInnovationNumber-1]
+        return [num_nodes, num_connection, ConnectionGene.nextInnovationNumber - 1]
 
     @staticmethod
     def cross_over(parent1, parent2):
@@ -132,7 +139,7 @@ class Genome:
         for connection in parent1.connections:
             if connection.innovationNumber in parent2:
                 par2_connection = parent2.get_connection_gene(connection.innovationNumber)
-                inherited_connection = connection.copy() if random.randint(0,1) == 0 else par2_connection.copy()
+                inherited_connection = connection.copy() if random.randint(0, 1) == 0 else par2_connection.copy()
                 if connection.expressed != par2_connection.expressed:
                     inherited_connection.expressed = False if random.random() < Genome.cross_disable_chance else True
                 child.connections.append(inherited_connection)
@@ -174,7 +181,7 @@ class Genome:
 
         W = weight_diff_sum / max(len(intersection_set), 1)
 
-        return (Genome.c1*E + Genome.c2*D)/n + Genome.c3*W
+        return (Genome.c1 * E + Genome.c2 * D) / n + Genome.c3 * W
 
 
 class ConnectionGene:
@@ -209,6 +216,7 @@ class Generation:
     weak_tolerance = 0.9
     clone_chance = 0.25
     mate_chance = 0.75
+    activation_threshold = 0.0
 
     def __init__(self):
         self.generation_number = 1
@@ -241,7 +249,7 @@ class Generation:
 
         self.species.sort(key=lambda x: x.max_fitness, reverse=True)
         for _ in range(len(self.species)):
-            if self.species[-1].max_fitness < avg_species_fitness*Generation.weak_tolerance:
+            if self.species[-1].max_fitness < avg_species_fitness * Generation.weak_tolerance:
                 del self.species[-1]
 
         population = 0
@@ -250,7 +258,7 @@ class Generation:
 
         offsprings = []
         for s in self.species:
-            max_offspring = s.average_fitness/avg_species_fitness * (Generation.max_population - population)
+            max_offspring = s.average_fitness / avg_species_fitness * (Generation.max_population - population)
             offsprings.extend(s.get_offsprings(max_offspring))
 
         for offspring in offsprings:
@@ -261,7 +269,6 @@ class Generation:
             population += s.population
 
         self.population = population
-
         self.generation_number += 1
 
 
@@ -304,7 +311,7 @@ class Species:
     def cull_half(self):
         self.organisms.sort(key=lambda x: x.fitness, reverse=True)
         self.representative = self.organisms[0]
-        for _ in range(self.population//2):
+        for _ in range(self.population // 2):
             del self.organisms[-1]
 
         self.population = len(self.organisms)
@@ -315,20 +322,26 @@ class Species:
         if self.population >= max_offspring_num:
             num_offspring = max_offspring_num
         else:
-            num_offspring = min(self.population*2, max_offspring_num)
+            num_offspring = min(self.population * 2, max_offspring_num)
 
+        if num_offspring < 1:
+            return offsprings
         self.organisms.sort(key=lambda x: x.fitness, reverse=True)
         champion = self.organisms[0]
         offsprings.append(champion.copy())
         num_offspring -= 1
-        if num_offspring > 0:
-            offsprings.append(Organism(Genome.cross_over(champion.genome, random.choice(self.organisms).genome)))
-            num_offspring -= 1
+        if num_offspring < 1:
+            return offsprings
 
-        for parent in random.sample(self.organisms, round(num_offspring*Generation.clone_chance)):
+        offsprings.append(Organism(Genome.cross_over(champion.genome, random.choice(self.organisms).genome)))
+        num_offspring -= 1
+        if num_offspring < 1:
+            return offsprings
+
+        for parent in random.sample(self.organisms, round(num_offspring * Generation.clone_chance)):
             offsprings.append(parent.copy())
 
-        for _ in range(round(num_offspring*Generation.mate_chance)):
+        for _ in range(round(num_offspring * Generation.mate_chance)):
             parent1, parent2 = random.sample(self.organisms, 2)
             if parent1.fitness > parent2.fitness:
                 offsprings.append(Organism(Genome.cross_over(parent1.genome, parent2.genome)))
@@ -387,17 +400,20 @@ class Organism:
             for node_id in to_del:
                 del input_ids[node_id]
 
-        best_action = -1
-        max_val = None
-
+        actions = []
+        max_value = 0.0
+        first = True
         for id in output_node_ids:
             if id in output_value:
-                if best_action == -1:
-                    max_val = output_value[id]
-                    best_action = id
-                else:
-                    if output_value[id] > max_val:
-                        max_val = output_value[id]
-                        best_action = id
+                if first:
+                    actions.append(id)
+                    max_value = output_value[id]
+                    first = False
+                    continue
+                if output_value[id] > Generation.activation_threshold:
+                    if output_value[id] > max_value:
+                        max_value = output_value[id]
+                        actions.pop()
+                        actions.append(id)
 
-        return best_action
+        return actions
