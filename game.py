@@ -266,9 +266,9 @@ class Bird:
 
 class Pipe:
     width = 50
-    hole_height = 140
+    hole_height = 130
     speed = -0.5
-    interval = 120
+    interval = 110
     
     def __init__(self, left_x=Game.white_space_end_x):
         self.left_x = left_x
