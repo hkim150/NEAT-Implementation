@@ -7,7 +7,7 @@ def main():
     window = pg.display.set_mode((Game.window_width, Game.window_height))
     game = Game()
 
-    initial_organism_count = 10
+    initial_organism_count = 20
     max_generations = 200
 
     gen = Generation()
