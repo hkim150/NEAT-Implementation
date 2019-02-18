@@ -211,8 +211,8 @@ class NodeGene:
 
 
 class Generation:
-    max_population = 20
-    stale_tolerance = 10
+    max_population = 50
+    stale_tolerance = 15
     weak_tolerance = 0.9
     clone_chance = 0.25
     mate_chance = 0.75
@@ -224,51 +224,63 @@ class Generation:
         self.population = 0
 
     def add_organism(self, organism):
-        self.population += 1
         if self.population > 1:
             for s in self.species:
                 if Genome.get_compatibility_distance(organism.genome, s.representative.genome) < Genome.d_t:
                     s.add_organism(organism)
+                    self.population += 1
                     return
+
         self.species.append(Species(organism))
+        self.population += 1
+
+    def get_all_organisms(self):
+        all_organisms = []
+        for s in self.species:
+            all_organisms.extend(s.organisms)
+
+        return all_organisms
 
     def next_generation(self):
-        avg_species_fitness = 0.0
+        sum_avg_species_fitness = 0.0
         for s in self.species:
             s.evaluate_self()
             s.cull_half()
             s.update_avg_fitness()
-            avg_species_fitness += s.average_fitness
+            sum_avg_species_fitness += s.average_fitness
 
-        avg_species_fitness /= len(self.species)
-
-        self.species.sort(key=lambda x: x.stale_generation_count)
-        for _ in range(len(self.species)):
-            if self.species[-1].stale_generation_count >= Generation.stale_tolerance:
-                del self.species[-1]
+        avg_species_fitness = sum_avg_species_fitness / len(self.species)
 
         self.species.sort(key=lambda x: x.max_fitness, reverse=True)
-        for _ in range(len(self.species)):
-            if self.species[-1].max_fitness < avg_species_fitness * Generation.weak_tolerance:
-                del self.species[-1]
+        for i in range(len(self.species)-1,-1,-1):
+            if len(self.species) < 2:
+                break
+            if self.species[i].max_fitness < avg_species_fitness * Generation.weak_tolerance:
+                del self.species[i]
 
-        population = 0
+        self.species.sort(key=lambda x: x.stale_generation_count)
+        for i in range(len(self.species)-1,-1,-1):
+            if len(self.species) < 2:
+                break
+            if self.species[i].stale_generation_count >= Generation.stale_tolerance:
+                del self.species[i]
+
+        self.population = 0
+        sum_avg_species_fitness = 0.00
         for s in self.species:
-            population += s.population
+            sum_avg_species_fitness += s.average_fitness
+            self.population += s.population
+
+        max_tot_offspring = Generation.max_population - self.population
 
         offsprings = []
         for s in self.species:
-            max_offspring = s.average_fitness / avg_species_fitness * (Generation.max_population - population)
+            max_offspring = round((s.average_fitness / sum_avg_species_fitness) * max_tot_offspring)
             offsprings.extend(s.get_offsprings(max_offspring))
 
         for offspring in offsprings:
             self.add_organism(offspring)
 
-        population = 0
-        for s in self.species:
-            population += s.population
-
-        self.population = population
         self.generation_number += 1
 
 
@@ -311,45 +323,59 @@ class Species:
     def cull_half(self):
         self.organisms.sort(key=lambda x: x.fitness, reverse=True)
         self.representative = self.organisms[0]
-        for _ in range(self.population // 2):
-            del self.organisms[-1]
+        cull_count = self.population // 2
+        if cull_count > 0:
+            for i in range(self.population-1, -1, self.population - cull_count):
+                del self.organisms[i]
 
         self.population = len(self.organisms)
 
     def get_offsprings(self, max_offspring_num):
         offsprings = []
-        num_offspring = 0
-        if self.population >= max_offspring_num:
-            num_offspring = max_offspring_num
-        else:
-            num_offspring = min(self.population * 2, max_offspring_num)
+        num_offspring = min(self.population * 2, max_offspring_num)
 
         if num_offspring < 1:
             return offsprings
+
         self.organisms.sort(key=lambda x: x.fitness, reverse=True)
-        champion = self.organisms[0]
-        offsprings.append(champion.copy())
+        champion = self.organisms[0].copy()
+
+        con_count = 0
+        for connection in champion.genome.connections:
+            if connection.expressed:
+                con_count += 1
+
+        if con_count < 5:
+            champion.genome.mutate()
+
+        offsprings.append(champion)
+
         num_offspring -= 1
+
         if num_offspring < 1:
             return offsprings
 
-        offsprings.append(Organism(Genome.cross_over(champion.genome, random.choice(self.organisms).genome)))
-        num_offspring -= 1
-        if num_offspring < 1:
-            return offsprings
+        num_mate = 0 if self.population < 2 else round(num_offspring * Generation.mate_chance)
+        num_clone = num_offspring - num_mate
 
-        for parent in random.sample(self.organisms, round(num_offspring * Generation.clone_chance)):
-            offsprings.append(parent.copy())
+        if num_clone > 0:
+            for parent in random.sample(self.organisms, num_clone):
+                offspring = parent.copy()
+                offspring.genome.mutate()
+                offsprings.append(offspring)
 
-        for _ in range(round(num_offspring * Generation.mate_chance)):
+        for _ in range(num_mate):
             parent1, parent2 = random.sample(self.organisms, 2)
             if parent1.fitness > parent2.fitness:
-                offsprings.append(Organism(Genome.cross_over(parent1.genome, parent2.genome)))
+                offspring = Organism(Genome.cross_over(parent1.genome, parent2.genome))
             else:
-                offsprings.append(Organism(Genome.cross_over(parent2.genome, parent1.genome)))
+                offspring = Organism(Genome.cross_over(parent2.genome, parent1.genome))
 
-        for offspring in offsprings:
             offspring.genome.mutate()
+            offsprings.append(offspring)
+
+        for organism in self.organisms:
+            organism.genome.mutate()
 
         return offsprings
 
@@ -401,19 +427,9 @@ class Organism:
                 del input_ids[node_id]
 
         actions = []
-        max_value = 0.0
-        first = True
         for id in output_node_ids:
             if id in output_value:
                 if output_value[id] > Generation.activation_threshold:
-                    if first:
-                        actions.append(id)
-                        max_value = output_value[id]
-                        first = False
-                        continue
-                    if output_value[id] > max_value:
-                        max_value = output_value[id]
-                        actions.pop()
-                        actions.append(id)
+                    actions.append(id)
 
         return actions
