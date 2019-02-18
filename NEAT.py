@@ -4,12 +4,12 @@ from math import exp
 
 class Genome:
     c1, c2, c3 = 1.0, 1.0, 0.4
-    d_t = 3.0
+    d_t = 2.5
     cross_disable_chance = 0.75
     flip_enable_chance = 0.02
     weight_mutation_chance = 0.8
-    add_node_mutation_chance = 0.1
-    add_connection_mutation_chance = 0.15
+    add_node_mutation_chance = 0.08
+    add_connection_mutation_chance = 0.12
     perturbation_chance = 0.9
 
     def __init__(self, num_input_nodes=0, num_output_nodes=0):
@@ -211,12 +211,13 @@ class NodeGene:
 
 
 class Generation:
-    max_population = 50
+    max_population = 100
     stale_tolerance = 15
     weak_tolerance = 0.9
     clone_chance = 0.25
     mate_chance = 0.75
     activation_threshold = 0.5
+    min_con_champ_preserve = 2
 
     def __init__(self):
         self.generation_number = 1
@@ -345,7 +346,7 @@ class Species:
             if connection.expressed:
                 con_count += 1
 
-        if con_count < 5:
+        if con_count < Generation.min_con_champ_preserve:
             champion.genome.mutate()
 
         offsprings.append(champion)
