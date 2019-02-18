@@ -4,23 +4,22 @@ from NEAT import *
 
 class Game:
     window_width = 1000
-    window_height = 500
-    screen_width = 400
-    screen_height = 400
-    screen_x = (window_width - screen_width) // 2
-    screen_y = (window_height - screen_height) // 2
+    window_height = 600
+    screen_width = 500
+    screen_height = 500
+    screen_x = (window_width - screen_width)/2
+    screen_y = (window_height - screen_height)/2
 
-    ice_height = 10
+    ground_thickness = 14
     wall_thickness = 6
-    white_space_width = screen_width - 2*wall_thickness
-    white_space_height = screen_height - wall_thickness - ice_height
-    radius = 8
-    hole_velocity = 1.5
-    hole_width = 60
-    hole_thickness = 30
-    move_interval = 0
-    hole_interval = 500
+    white_space_width = screen_width - wall_thickness*2
+    white_space_height = screen_height - wall_thickness - ground_thickness
+    white_space_start_x = screen_x + wall_thickness
+    white_space_start_y = screen_y + wall_thickness
+    white_space_end_x = screen_x + screen_width - wall_thickness
+    white_space_end_y = screen_y + screen_height - ground_thickness
 
+    bird_color = [(255, 0, 0), (255, 165, 0), (12, 124, 21), (15, 27, 155), (255, 255, 0), (0, 0, 255), (128, 0, 128), (160, 160, 160), (0, 255, 255), (255, 178, 247)]
     colors = {
         'black':(0, 0, 0),
         'red':(255, 0, 0),
@@ -31,49 +30,50 @@ class Game:
         'purple':(128, 0, 128),
         'white':(255, 255, 255),
         'gray':(160,160,160),
-        'ice':(0,255,255)
+        'ice':(0,255,255),
+        'brown':(139,69,19)
     }
 
-    num_inputs = 1
-    num_actions = 2
-    actions_str = ['Left', 'Right']
-    left = 1
-    right = 2
+    num_inputs = 3
+    num_actions = 1
+    actions_str = ['Flap']
+    flap = 3
 
     def draw_background(self, window):
         window.fill(Game.colors['white'])
-        pg.draw.rect(window, Game.colors['ice'], (Game.screen_x, Game.screen_y + Game.screen_height - Game.ice_height, Game.screen_width, Game.ice_height), 0)
+        pg.draw.rect(window, Game.colors['brown'], (Game.screen_x, Game.white_space_end_y, Game.screen_width, Game.ground_thickness), 0)
         pg.draw.rect(window, Game.colors['black'], (Game.screen_x, Game.screen_y, Game.screen_width, Game.wall_thickness), 0)
         pg.draw.rect(window, Game.colors['black'], (Game.screen_x, Game.screen_y, Game.wall_thickness, Game.screen_height), 0)
-        pg.draw.rect(window, Game.colors['black'], (Game.screen_x + Game.screen_width - Game.wall_thickness, Game.screen_y, Game.wall_thickness, Game.screen_height), 0)
+        pg.draw.rect(window, Game.colors['black'], (Game.white_space_end_x, Game.screen_y, Game.wall_thickness, Game.screen_height), 0)
 
-    def check_out_of_bound(self, player_x):
-        left_bound = -1 * Game.screen_width//2 + Game.wall_thickness + Game.radius
-        if player_x < left_bound:
-            return True, left_bound
+    def check_out_of_bound(self, bird):
+        if bird.y - Bird.radius < Game.white_space_start_y:
+            return True
 
-        right_bound = Game.screen_width//2 - Game.wall_thickness - Game.radius
-        if player_x > right_bound:
-            return True, right_bound
-
-        return False, player_x
-
-    def check_game_end(self, player_x, holes):
-        if len(holes) < 1:
-            return False
-
-        if holes[0][1] > Game.white_space_height - Game.hole_thickness/2 - Game.radius*2:
-            if player_x - Game.radius < holes[0][0] - Game.hole_width/2 or player_x + Game.radius > holes[0][0] + Game.hole_width/2:
-                return True
+        if bird.y + Bird.radius > Game.white_space_end_y:
+            return True
 
         return False
 
-    def draw_info(self, surface, info):
-        pg.font.init()
+    def check_game_end(self, bird, pipes):
+        if self.check_out_of_bound(bird):
+            return True
+
+        if len(pipes) < 1:
+            return False
+
+        for pipe in pipes:
+            if bird.x + Bird.radius > pipe.left_x and bird.x - Bird.radius < pipe.right_x:
+                if bird.y + Bird.radius > pipe.hole_bottom_y or bird.y - Bird.radius < pipe.hole_top_y:
+                    return True
+
+        return False
+
+    def draw_neat_info(self, surface, info):
         font = pg.font.SysFont('comicsans', 30)
-        sx = 100
+        sx = Game.screen_x - 180
         sy = Game.screen_y
-        str_list = ["generation", "population", "num_species", "species", "organism", "nodes", "connections", "innovation #"]
+        str_list = ["generation", "population", "num_species"]#, "species", "organism", "nodes", "connections", "innovation #"]
 
         for i in range(len(str_list)):
             text = str_list[i] + ": " + str(info[i])
@@ -87,6 +87,15 @@ class Game:
         surface.blit(label, (sx, sy))
 
         return sx, sy
+
+    def draw_num_survivors(self, surface, num_alive):
+        font = pg.font.SysFont("comicsans", 30)
+        sx = Game.white_space_end_x + Game.wall_thickness + 20
+        sy = Game.screen_y
+
+        pg.draw.rect(surface, Game.colors['white'], (sx, sy, 100, 40))
+        label = font.render(str(num_alive) + " alive", 1, Game.colors['black'])
+        surface.blit(label, (sx, sy))
 
     def draw_input_output(self, surface, state, actions):
         numbers = []
@@ -102,7 +111,7 @@ class Game:
                 a_str += comma + Game.actions_str[action - Game.num_inputs]
             numbers.append(a_str)
 
-        texts = ["player_x", "del_x", "del_y", "velocity", "actions"]
+        texts = ["bird_pos", "pipe_pos", "velocity", "action"]
 
         font = pg.font.SysFont('comicsans', 30)
         sx = Game.screen_x + Game.screen_width + 20
@@ -122,45 +131,76 @@ class Game:
         label = font.render(text, 1, Game.colors['black'])
         surface.blit(label, (sx+80, sy))
 
-    def get_state(self, player_x, holes, velocity):
-        h_x, h_y = 0.0, 0.0
-        x = player_x / (Game.screen_width//2 - Game.wall_thickness - Game.radius)
-        if len(holes) > 0:
-            h_x, h_y = holes[0]
-            del_x = (h_x - player_x) / (Game.white_space_width - Game.hole_width/2 - Game.radius)
-            del_y = (Game.white_space_height - h_y - Game.radius) / (Game.white_space_height - Game.hole_thickness/2 - Game.radius)
-        state = [x, del_x, del_y, velocity]
+    def draw_pipes(self, surface, pipes):
+        if len(pipes) > 0:
+            for pipe in pipes:
+                draw_width = min(pipe.right_x - Game.white_space_start_x, Game.white_space_end_x - pipe.left_x, pipe.width)
+                if draw_width > 0:
+                    pg.draw.rect(surface, Game.colors['green'], (
+                    max(Game.white_space_start_x, pipe.left_x), Game.white_space_start_y, draw_width,
+                    Game.white_space_height), 0)
+                    pg.draw.rect(surface, Game.colors['white'], (
+                        max(Game.white_space_start_x, pipe.left_x), pipe.hole_top_y, draw_width,
+                        Pipe.hole_height), 0)
+
+    def draw_birds(self, surface, birds):
+        if len(birds) > 0:
+            for bird in birds.values():
+                pg.draw.circle(surface, bird.color, (bird.x, int(bird.y)), Bird.radius, 0)
+
+    def get_pipe(self, pipes):
+        for pipe in pipes:
+            if pipe.right_x > Bird.start_x:
+                return pipe
+
+    def get_state(self, bird, pipe):
+        #bird_pos = (Game.white_space_end_y - bird.y) / Game.white_space_height
+        #pipe_pos = (Game.white_space_end_y - pipe.hole_center_y) / Game.white_space_height
+        del_y = (pipe.hole_center_y - bird.y) / Game.white_space_height
+        bird_vel = -1*bird.vel_y / Bird.max_vel_y
+        state = [del_y, bird_vel, 1.0]
 
         return state
 
-    def game_start(self, window, organism, info, user_mode=False):
+    def game_start(self, window, organisms, info, user_mode=False):
+        pg.font.init()
         self.draw_background(window)
-        fit_x, fit_y = self.draw_info(window, info)
+        self.draw_num_survivors(window, len(organisms))
+        fit_x, fit_y = self.draw_neat_info(window, info)
         run = True
-        game_end = False
         clock = pg.time.Clock()
-        fitness = 0
+        play_time = 0
+        score = 0
+        pipes = [Pipe()]
+        #key_delay = 0
 
-        move_delay = 0
+        birds = dict()
+        for organism in organisms:
+            newBird = Bird(random.randint(Game.white_space_start_y+20, Game.white_space_end_y-20), random.choice(Game.bird_color))
+            birds[organism] = newBird
 
-        player_x = 0
-        holes = []
-        hole_delay = 0
-        holes.append([(random.random() - 0.5) * (Game.white_space_width - Game.hole_width), -1*Game.hole_thickness//2])
-
-        max_velocity = 3.5
-        velocity = (random.random() - 0.5) * max_velocity
-
-        if user_mode:
-            pg.key.set_repeat(100, 100)
-            Game.move_interval = 10
+        # if user_mode:
+        #     pg.key.set_repeat(100, 100)
 
         while run:
             clock.tick()
-            fitness += clock.get_rawtime()/100
+            play_time += clock.get_rawtime()
+            # key_delay += clock.get_rawtime()
 
-            move_delay += clock.get_rawtime()
-            hole_delay += clock.get_rawtime()
+            if pipes[-1].right_x + Pipe.interval < Game.white_space_end_x:
+                pipes.append(Pipe())
+
+            for i in range(len(pipes)-1, -1, -1):
+                pipes[i].left_x += Pipe.speed
+                pipes[i].right_x += Pipe.speed
+                pipes[i].center_x += Pipe.speed
+                if pipes[i].right_x < Bird.start_x and not pipes[i].scored:
+                    score += 10
+                    pipes[i].scored = True
+                if pipes[i].right_x <= Game.white_space_start_x:
+                    pipes.remove(pipes[i])
+
+            fitness = score + play_time / 1000
 
             for event in pg.event.get():
                 if event.type == pg.QUIT:
@@ -169,53 +209,72 @@ class Game:
 
                 if event.type == pg.KEYDOWN:
                     if event.key == pg.K_ESCAPE:
-                            run = False
-                            pg.display.quit()
-                    if user_mode:
-                        if event.key == pg.K_LEFT:
-                            velocity -= 0.5
-                        if event.key == pg.K_RIGHT:
-                            velocity += 0.5
+                        run = False
+                        pg.display.quit()
+                #     if event.key == pg.K_SPACE:
+                #         bird.vel_y = max(Bird.max_vel_y, bird.vel_y + Bird.lift_force)
 
-            if not user_mode:
-                state = self.get_state(player_x, holes, velocity)
-                actions = organism.choose_action([state[1]])
-
+        # if not user_mode:
+            weaklings = []
+            next_pipe = self.get_pipe(pipes)
+            for organism, bird in birds.items():
+                state = self.get_state(bird, next_pipe)
+                actions = organism.choose_action(state)
                 if len(actions) > 0:
                     for action in actions:
-                        if action == Game.left:
-                            velocity = max(velocity - 0.5, -1*max_velocity)
-                        if action == Game.right:
-                            velocity = min(velocity + 0.5, max_velocity)
+                        if action == Game.flap:
+                            bird.vel_y = max(Bird.max_vel_y, bird.vel_y + Bird.lift_force)
 
-            for hole in holes:
-                hole[1] += Game.hole_velocity
+                bird.y += bird.vel_y
+                bird.vel_y = min(-1*Bird.max_vel_y, bird.vel_y + Bird.gravity)
 
-            if len(holes) > 0:
-                if holes[0][1] - Game.hole_thickness/2 > Game.white_space_height:
-                    del holes[0]
-                    fitness += 15
+                if self.check_game_end(bird, pipes):
+                    organism.fitness = fitness
+                    weaklings.append(organism)
 
-            if move_delay > Game.move_interval:
-                player_x += velocity
-                game_end, player_x = self.check_out_of_bound(player_x)
-                game_end = game_end or self.check_game_end(player_x, holes)
-                move_delay = 0
+            for weakling in weaklings:
+                del birds[weakling]
 
-            if hole_delay > Game.hole_interval:
-                holes.append([(random.random() - 0.5) * (Game.white_space_width - Game.hole_width), -1* Game.hole_thickness//2])
-                hole_delay = 0
+            if len(birds) < 1:
+                run = False
 
-            pg.draw.rect(window, Game.colors['white'], (Game.screen_x + Game.wall_thickness, Game.screen_y + Game.wall_thickness, Game.white_space_width, Game.white_space_height), 0)
-            for hole in holes:
-                pg.draw.rect(window, Game.colors['red'], (Game.screen_x + Game.wall_thickness, max(1, int(hole[1] - Game.hole_thickness/2)) + Game.screen_y + Game.wall_thickness, Game.white_space_width, min(Game.hole_thickness, Game.white_space_height - int(hole[1]) + Game.hole_thickness/2, int(Game.hole_thickness//2 + hole[1]))), 0)
-                pg.draw.rect(window, Game.colors['white'], (Game.screen_x + Game.screen_width//2 + int(hole[0] - Game.hole_width/2), max(1, int(hole[1] - Game.hole_thickness/2)) + Game.screen_y + Game.wall_thickness, Game.hole_width, min(Game.hole_thickness, Game.white_space_height - int(hole[1] - Game.hole_thickness/2), int(Game.hole_thickness//2 + hole[1]))), 0)
-            pg.draw.circle(window, Game.colors['blue'], (Game.screen_x + Game.screen_width//2 + int(player_x), Game.screen_y + Game.screen_height - Game.ice_height - Game.radius), Game.radius, 0)
+            pg.draw.rect(window, Game.colors['white'], (Game.white_space_start_x, Game.white_space_start_y, Game.white_space_width, Game.white_space_height), 0)
+            self.draw_pipes(window, pipes)
+            self.draw_birds(window, birds)
             self.draw_fitness(window, fitness, fit_x, fit_y)
-            if not user_mode:
-                self.draw_input_output(window, state, actions)
+            self.draw_num_survivors(window, len(birds))
+
+            # if not user_mode:
+            #     self.draw_input_output(window, state, actions)
+
             pg.display.update()
 
-            if game_end:
-                organism.fitness = fitness
-                run = False
+
+class Bird:
+    start_x = Game.screen_x + Game.screen_width//4
+    radius = 8
+    lift_force = -1.5
+    gravity = 0.015
+    max_vel_y = -1.5
+
+    def __init__(self, y, color):
+        self.x = int(Bird.start_x)
+        self.y = y
+        self.color = color
+        self.vel_y = 0
+
+
+class Pipe:
+    width = 50
+    hole_height = 140
+    speed = -0.5
+    interval = 120
+    
+    def __init__(self, left_x=Game.white_space_end_x):
+        self.left_x = left_x
+        self.right_x = self.left_x + Pipe.width
+        self.center_x = self.left_x + Pipe.width/2
+        self.hole_center_y = random.randint(Game.white_space_start_y + Pipe.hole_height, Game.white_space_end_y - Pipe.hole_height)
+        self.hole_top_y = int(self.hole_center_y - Pipe.hole_height/2)
+        self.hole_bottom_y = int(self.hole_center_y + Pipe.hole_height/2)
+        self.scored = False
